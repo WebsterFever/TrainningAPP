@@ -6,6 +6,10 @@
   "scripts": {
    "dev": "tsx --watch src/index.ts"
   },
+
+  "engines": {
+    "node": "24.X"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
