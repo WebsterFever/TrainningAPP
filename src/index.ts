@@ -1,7 +1,8 @@
 import "dotenv/config";
 
+import fastifyCors from "@fastify/cors";
 import fastifySwagger from "@fastify/swagger";
-import fastifySwaggerUi from "@fastify/swagger-ui";
+import fastifyApiReference from "@scalar/fastify-api-reference";
 import Fastify from "fastify";
 import {
   jsonSchemaTransform,
@@ -11,15 +12,18 @@ import {
 } from "fastify-type-provider-zod";
 import { z } from "zod";
 
+import { auth } from "./lib/auth.js";
+
 const app = Fastify({
   logger: true,
 });
 
-// Required for Zod
+/* ---------------- Zod Setup ---------------- */
+
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
 
-/* ---------------- Swagger ---------------- */
+/* ---------------- Swagger (OpenAPI generator only) ---------------- */
 
 await app.register(fastifySwagger, {
   openapi: {
@@ -33,20 +37,32 @@ await app.register(fastifySwagger, {
         url: "http://localhost:8080",
         description: "Local server",
       },
-      {
-        url: "https://trainningapp.com",
-        description: "Production server",
-      },
     ],
   },
   transform: jsonSchemaTransform,
 });
 
-await app.register(fastifySwaggerUi, {
-  routePrefix: "/docs",
+/* ---------------- Expose swagger.json (REQUIRED for Scalar) ---------------- */
+
+app.withTypeProvider<ZodTypeProvider>().route({
+  method: "GET",
+  url: "/swagger.json",
+  schema: {
+    hide: true,
+  },
+  handler: async () => {
+    return app.swagger();
+  },
 });
 
-/* ---------------- Routes ---------------- */
+/* ---------------- CORS ---------------- */
+
+await app.register(fastifyCors, {
+  origin: true,
+  credentials: true,
+});
+
+/* ---------------- Example Route ---------------- */
 
 app.withTypeProvider<ZodTypeProvider>().route({
   method: "GET",
@@ -61,9 +77,62 @@ app.withTypeProvider<ZodTypeProvider>().route({
     },
   },
   handler: async () => {
-    return {
-      message: "Hello World",
-    };
+    return { message: "Hello World" };
+  },
+});
+
+/* ---------------- Auth Proxy Route ---------------- */
+
+app.route({
+  method: ["GET", "POST"],
+  url: "/api/auth/*",
+  async handler(request, reply) {
+    try {
+      const url = new URL(request.url, `http://${request.headers.host}`);
+
+      const headers = new Headers();
+      Object.entries(request.headers).forEach(([key, value]) => {
+        if (value) headers.append(key, value.toString());
+      });
+
+      const req = new Request(url.toString(), {
+        method: request.method,
+        headers,
+        ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+      });
+
+      const response = await auth.handler(req);
+
+      reply.status(response.status);
+      response.headers.forEach((value, key) => reply.header(key, value));
+
+      reply.send(response.body ? await response.text() : null);
+    } catch (error) {
+      app.log.error(error);
+      reply.status(500).send({
+        error: "Internal authentication error",
+      });
+    }
+  },
+});
+
+/* ---------------- Scalar API Reference (Docs UI) ---------------- */
+
+await app.register(fastifyApiReference, {
+  routePrefix: "/docs",
+  configuration: {
+    sources: [
+      {
+        title: "Trainning API",
+        slug: "trainning-api", // must be URL-safe
+        url: "/swagger.json",
+      },
+      {
+        title: "Auth API",
+        slug: "auth-api",
+        url: "/api/auth/open-api/generate-schema",
+      },
+    ],
   },
 });
 
@@ -71,7 +140,7 @@ app.withTypeProvider<ZodTypeProvider>().route({
 
 const start = async () => {
   try {
-    const port = parseInt(process.env.PORT || "8080", 10);
+    const port = Number(process.env.PORT) || 8080;
 
     await app.listen({
       port,
@@ -79,7 +148,7 @@ const start = async () => {
     });
 
     app.log.info(`🚀 Server running at http://localhost:${port}`);
-    app.log.info(`📘 Swagger docs at http://localhost:${port}/docs`);
+    app.log.info(`📘 API Reference at http://localhost:${port}/docs`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

@@ -13,11 +13,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
-/* =========================
-   USER
-========================= */
-
 model User {
   id            String   @id @default(uuid())
   name          String
@@ -27,14 +22,14 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  workoutPlans   WorkoutPlan[]
-  workoutSessions UserWorkoutSession[]
+  workoutPlans     WorkoutPlan[]
+  workoutSessions  UserWorkoutSession[]
   exerciseProgress UserWorkoutSessionExerciseProgress[]
-}
+  sessions         Session[]
+  accounts         Account[]
 
-/* =========================
-   WORKOUT PLAN
-========================= */
+  @@map("user")
+}
 
 model WorkoutPlan {
   id        String   @id @default(uuid())
@@ -44,13 +39,9 @@ model WorkoutPlan {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user        User        @relation(fields: [userId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
   workoutDays WorkoutDay[]
 }
-
-/* =========================
-   WORKOUT DAY
-========================= */
 
 enum WeekDay {
   MONDAY
@@ -72,14 +63,10 @@ model WorkoutDay {
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
-  workoutPlan WorkoutPlan    @relation(fields: [workoutPlanId], references: [id])
+  workoutPlan WorkoutPlan          @relation(fields: [workoutPlanId], references: [id])
   exercises   WorkoutExercise[]
   sessions    UserWorkoutSession[]
 }
-
-/* =========================
-   WORKOUT EXERCISE
-========================= */
 
 model WorkoutExercise {
   id              String   @id @default(uuid())
@@ -92,32 +79,24 @@ model WorkoutExercise {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  workoutDay WorkoutDay @relation(fields: [workoutDayId], references: [id])
+  workoutDay WorkoutDay                           @relation(fields: [workoutDayId], references: [id])
   progress   UserWorkoutSessionExerciseProgress[]
 }
-
-/* =========================
-   USER WORKOUT SESSION
-========================= */
 
 model UserWorkoutSession {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   userId       String
   workoutDayId String
-  startedAt    DateTime @default(now())
+  startedAt    DateTime  @default(now())
   completedAt  DateTime?
 
-  user       User             @relation(fields: [userId], references: [id])
-  workoutDay WorkoutDay       @relation(fields: [workoutDayId], references: [id])
+  user       User                                 @relation(fields: [userId], references: [id])
+  workoutDay WorkoutDay                           @relation(fields: [workoutDayId], references: [id])
   progress   UserWorkoutSessionExerciseProgress[]
 }
 
-/* =========================
-   EXERCISE PROGRESS
-========================= */
-
 model UserWorkoutSessionExerciseProgress {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   userId           String
   workoutSessionId String
   exerciseId       String
@@ -126,4 +105,52 @@ model UserWorkoutSessionExerciseProgress {
   user           User               @relation(fields: [userId], references: [id])
   workoutSession UserWorkoutSession @relation(fields: [workoutSessionId], references: [id])
   exercise       WorkoutExercise    @relation(fields: [exerciseId], references: [id])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
 }
